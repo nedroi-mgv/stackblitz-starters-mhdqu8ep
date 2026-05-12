@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>MGV | Officina & Direzione</title>
+    <link rel="stylesheet" href="style.css"> 
+    <link rel="manifest" href="manifest.json">
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
+    <script src="shared.js"></script>
+    <style>
+        body { display: flex; margin: 0; background: #000; color: white; font-family: 'Outfit', sans-serif; }
+        .sidebar { width: 250px; height: 100vh; position: sticky; top: 0; background: #0b0b0b; border-right: 1px solid #222; flex-shrink: 0; }
+        .main { flex-grow: 1; padding: 25px; min-width: 0; }
+        
+        .nav-link { display: block; padding: 15px 20px; color: #888; text-decoration: none; transition: 0.3s; }
+        .nav-link:hover, .nav-link.active { background: #d4af37; color: black; font-weight: bold; }
+
+        .search-bar { width: 100%; padding: 12px; background: #111; border: 1px solid #333; color: white; border-radius: 8px; margin-bottom: 20px; outline: none; border-left: 4px solid #d4af37; }
+
+        .fasi-container { display: flex; gap: 15px; overflow-x: auto; padding-bottom: 20px; }
+        .colonna-fase { min-width: 280px; background: rgba(255,255,255,0.03); padding: 15px; border-radius: 12px; border: 1px solid #222; }
+
+        .scheda-premium { background: #111; border: 1px solid #333; border-radius: 12px; margin-bottom: 20px; overflow: hidden; }
+        .scheda-header { padding: 15px; background: #1a1a1a; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; }
+        .scheda-body { padding: 15px; display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+
+        .lista-lavori { background: #000; padding: 10px; border-radius: 8px; font-size: 0.85rem; border: 1px solid #222; }
+        .item-lavoro { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #111; }
+
+        .tabella-direzione { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        .tabella-direzione th { text-align: left; padding: 12px; color: #d4af37; border-bottom: 2px solid #222; font-size: 0.75rem; text-transform: uppercase; }
+        .tabella-direzione td { padding: 12px; border-bottom: 1px solid #222; font-size: 0.85rem; }
+
+        .text-gold { color: #d4af37; }
+        .text-green { color: #2ecc71; }
+        .text-red { color: #e74c3c; }
+
+        .modal-edit { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #111; border: 2px solid #d4af37; padding: 25px; z-index: 1000; border-radius: 12px; display: none; width: 500px; max-height: 90vh; overflow-y: auto; }
+        .overlay { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); display:none; z-index:999; }
+        .input-dark { background: #000; border: 1px solid #333; color: white; padding: 8px; border-radius: 4px; width: 100%; box-sizing: border-box; }
+        
+        .btn-edit { background: #333; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 0.7rem; }
+        .btn-edit:hover { background: #d4af37; color: black; }
+    </style>
+</head>
+<body>
+    <aside class="sidebar">
+        <div style="padding: 40px 20px; text-align:center;"><h2 style="color:#d4af37; font-weight:900;">MGV</h2></div>
+        <a href="dashboard.html" class="nav-link">📊 Dashboard</a>
+        <a href="parco.html" class="nav-link">🚗 Parco Veicoli</a>
+        <a href="officina.html" class="nav-link active">🔧 Officina Prep</a>
+        <a href="commerciale.html" class="nav-link">🤝 Area Commerciale</a>
+        <a href="direzione.html" class="nav-link">📈 Direzione</a>
+    </aside>
+
+    <main class="main" id="view-port"></main>
+
+    <div id="overlay" class="overlay" onclick="closeEdit()"></div>
+    <div id="edit-modal" class="modal-edit">
+        <h3 style="color:#d4af37; margin-top:0;">MODIFICA TOTALE VEICOLO</h3>
+        <div id="edit-form-content" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;"></div>
+        <button onclick="saveEconomicData()" style="width:100%; background:#d4af37; border:none; padding:12px; margin-top:20px; font-weight:bold; cursor:pointer; border-radius:4px; color:black;">SALVA MODIFICHE</button>
+    </div>
+    <script>
+        const config = { databaseURL: "https://gestionale-mgv-default-rtdb.firebaseio.com/" };
+        if (!firebase.apps.length) { firebase.initializeApp(config); }
+        const database = firebase.database();
+    
+        let listaAuto = [];
+        let currentView = "work"; 
+        let searchTerm = "";
+        let currentEditId = null;
+    
+        // Sincronizzazione Dati Realtime
+        database.ref('veicoli').on('value', (snapshot) => {
+            const data = snapshot.val();
+            listaAuto = [];
+            if (data) { 
+                for (let id in data) { 
+                    listaAuto.push({ id, ...data[id] }); 
+                } 
+            }
+            refreshView();
+        });
+    
+        function refreshView() {
+            const v = document.getElementById('view-port');
+            if(!v) return;
+            if(currentView === "work") renderWork(v);
+            else if(currentView === "archivio") renderArchivio(v);
+            else renderDirezione(v);
+        }
+    
+        function formattaDataPerInput(iso) {
+            if(!iso) return "";
+            return iso.split('T')[0];
+        }
+    
+        function formatDate(d) {
+            if(!d) return "-";
+            const date = new Date(d);
+            return date.toLocaleDateString('it-IT');
+        }
+    
+        // --- 1. FUNZIONE PER ATTIVARE L'AUTO IN OFFICINA ---
+        function iniziaLavorazione(id) {
+            if(!id) return;
+            database.ref('veicoli/' + id).update({
+                step: 0,
+                archiviato: false,
+                stato: "in_lavorazione",
+                speseRipristino: (listaAuto.find(x => x.id === id).speseRipristino || 0)
+            }).then(() => {
+                searchTerm = ""; 
+                refreshView();
+            });
+        }
+    
+        // --- 2. RENDER OFFICINA (CON RICERCA E AGGIUNTA) ---
+        function renderWork(v) {
+            const term = searchTerm.toLowerCase().trim();
+            
+            const autoInOfficina = listaAuto.filter(x => 
+                x.step !== undefined && x.step !== null && x.step < 4 && !x.archiviato && x.stato !== 'venduta'
+            );
+    
+            const autoSuggerite = term.length > 1 ? listaAuto.filter(x => {
+                const targa = (x.targa || "").toLowerCase();
+                const modello = (x.modello || "").toLowerCase();
+                const giaInOfficina = autoInOfficina.some(inOff => inOff.id === x.id);
+                return !giaInOfficina && x.stato !== 'venduta' && (targa.includes(term) || modello.includes(term));
+            }) : [];
+    
+            v.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                    <h2>🔧 OFFICINA PREPARAZIONI</h2>
+                    <div style="display:flex; gap:10px;">
+                        <button onclick="currentView='archivio'; refreshView()" style="background:#d4af37; padding:10px; border:none; border-radius:5px; cursor:pointer; font-weight:bold; color:black;">📂 VEDI ARCHIVIO</button>
+                        <button onclick="currentView='direzione'; refreshView()" style="background:#444; color:white; padding:10px; border:none; border-radius:5px; cursor:pointer;">📈 DIREZIONE</button>
+                    </div>
+                </div>
+                
+                <input type="text" id="main-search" class="search-bar" placeholder="🔍 Cerca targa per aggiungere o gestire..." value="${searchTerm}">
+    
+                <div id="container-suggerimenti">
+                    ${autoSuggerite.map(a => `
+                        <div style="background:rgba(212, 175, 55, 0.2); border:2px solid #d4af37; padding:15px; border-radius:8px; margin-bottom:15px; display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                                <strong style="font-size:1.1rem; color:white;">${a.marca || ''} ${a.modello || ''}</strong> 
+                                <span style="margin-left:10px; background:#d4af37; color:black; padding:2px 6px; border-radius:4px; font-weight:900;">${a.targa || '---'}</span>
+                            </div>
+                            <button onclick="iniziaLavorazione('${a.id}')" style="background:#d4af37; color:black; border:none; padding:10px 20px; border-radius:6px; cursor:pointer; font-weight:900;">INIZIA PREPARAZIONE +</button>
+                        </div>
+                    `).join('')}
+                </div>
+    
+                <div class="fasi-container">
+                    ${["MECCANICA", "CARROZZERIA", "ALTRI", "LAVAGGIO"].map((faseNome, indiceFase) => {
+                        const filtrate = autoInOfficina.filter(x => {
+                            if (x.step != indiceFase) return false;
+                            if (term === "") return true;
+                            return (x.targa + x.modello).toLowerCase().includes(term);
+                        });
+    
+                        return `
+                        <div class="colonna-fase">
+                            <div style="color:#d4af37; font-weight:900; text-align:center; margin-bottom:15px; border-bottom:1px solid #333; padding-bottom:5px;">${faseNome} (${filtrate.length})</div>
+                            ${filtrate.map(x => `
+                                <div style="background:#111; padding:12px; border:1px solid #333; margin-bottom:10px; border-radius:8px;">
+                                    <strong>${x.marca || ''} ${x.modello || ''}</strong><br>
+                                    <span style="color:#d4af37; font-weight:bold; font-size:0.8rem;">${x.targa || ''}</span>
+                                    <input id="f_${x.id}" class="input-dark" placeholder="Fornitore" style="margin-top:8px;">
+                                    <input id="c_${x.id}" type="number" class="input-dark" placeholder="Costo €" style="margin-top:5px;">
+                                    <button onclick="saveWork('${x.id}',${indiceFase},'${faseNome}')" style="width:100%; background:#222; color:#d4af37; border:1px solid #d4af37; padding:8px; margin-top:10px; font-weight:bold; cursor:pointer; border-radius:4px;">AVANZA</button>
+                                </div>
+                            `).join('')}
+                        </div>`;
+                    }).join('')}
+                </div>`;
+    
+            const si = document.getElementById('main-search');
+            if(si) {
+                si.addEventListener('input', (e) => { searchTerm = e.target.value; refreshView(); });
+                si.focus();
+                si.setSelectionRange(searchTerm.length, searchTerm.length);
+            }
+        }
+    
+        function saveWork(id, step, faseNome) {
+            const fornitore = document.getElementById('f_'+id).value;
+            const costo = parseFloat(document.getElementById('c_'+id).value) || 0;
+            if(!fornitore) return alert("Manca Fornitore");
+            const auto = listaAuto.find(x => x.id === id);
+            const lavori = auto.listaLavori || [];
+            lavori.push({ fase: faseNome, fornitore: fornitore, costo: costo, data: new Date().toISOString() });
+            database.ref('veicoli/' + id).update({
+                listaLavori: lavori,
+                speseRipristino: (auto.speseRipristino || 0) + costo,
+                step: step + 1,
+                archiviato: (step + 1 >= 4)
+            });
+        }
+    
+        // --- 3. RENDER ARCHIVIO ---
+        function renderArchivio(v) {
+            const term = searchTerm.toLowerCase();
+            const archiviate = listaAuto.filter(x => x.archiviato && x.stato !== 'venduta' && (x.targa || "").toLowerCase().includes(term));
+            v.innerHTML = `
+                <div style="display:flex; justify-content:space-between; margin-bottom:20px;">
+                    <h2>📂 ARCHIVIO TECNICO (PRONTE)</h2>
+                    <button onclick="currentView='work'; refreshView()" style="background:#444; color:white; padding:10px; border:none; border-radius:5px; cursor:pointer;">⬅ TORNA OFFICINA</button>
+                </div>
+                <input type="text" class="search-bar" placeholder="🔍 Cerca targa..." oninput="searchTerm=this.value; refreshView()" value="${searchTerm}">
+                ${archiviate.map(car => `
+                    <div class="scheda-premium">
+                        <div class="scheda-header">
+                            <div><strong>${car.marca} ${car.modello}</strong> <span class="text-gold" style="margin-left:10px;">${car.targa}</span></div>
+                            <div style="display:flex; gap:10px;">
+                                <button onclick="segnaVenduta('${car.id}')" style="background:#2ecc71; border:none; padding:8px 15px; border-radius:5px; font-weight:bold; cursor:pointer; color:black;">VENDUTA</button>
+                                <button onclick="openEdit('${car.id}')" style="background:#333; color:white; border:none; padding:8px 15px; border-radius:5px; cursor:pointer;">DETTAGLI/EDIT</button>
+                            </div>
+                        </div>
+                        <div class="scheda-body">
+                            <div class="lista-lavori">
+                                <strong class="text-gold">STORICO LAVORI:</strong>
+                                ${(car.listaLavori || []).map(l => `<div class="item-lavoro"><span>${l.fase}</span><span class="text-red">€${l.costo}</span></div>`).join('')}
+                                <div class="item-lavoro" style="border:none; font-weight:bold; margin-top:5px;"><span>TOTALE</span><span class="text-red">€${car.speseRipristino || 0}</span></div>
+                            </div>
+                            <div style="background:rgba(255,255,255,0.02); padding:10px; border-radius:8px;">
+                                <div class="item-lavoro"><span>Vendita:</span><strong class="text-gold">€${car.prezzo || 0}</strong></div>
+                            </div>
+                        </div>
+                    </div>
+                `).join('')}`;
+        }
+    
+        // --- 4. RENDER DIREZIONE ---
+        function renderDirezione(v) {
+            const vendute = listaAuto.filter(x => x.stato === 'venduta');
+            v.innerHTML = `
+                <div style="display:flex; justify-content:space-between; margin-bottom:20px;">
+                    <h2>📈 DIREZIONE & VENDUTO</h2>
+                    <button onclick="currentView='work'; refreshView()" style="background:#444; color:white; padding:10px; border:none; border-radius:5px; cursor:pointer;">⬅ TORNA OFFICINA</button>
+                </div>
+                <table class="tabella-direzione">
+                    <thead>
+                        <tr>
+                            <th>Entrata</th><th>Vendita</th><th>Veicolo</th><th>Acquisto</th><th>Prep.</th><th>Volt/Mini</th><th>Provv.</th><th>Prezzo</th><th>MARGINE</th><th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${vendute.map(a => {
+                            const totProv = (a.provvigioneFinanziaria || 0) + (a.provvigioneAssicurativa || 0);
+                            const totVolt = (a.costoVoltura || 0) + (a.costoMinivoltura || 0);
+                            const margine = (a.prezzo || 0) + totProv - (a.acquisto || 0) - (a.speseRipristino || 0) - totVolt;
+                            return `<tr>
+                                <td>${formatDate(a.dataInserimento)}</td>
+                                <td class="text-green">${formatDate(a.dataVendita)}</td>
+                                <td><strong>${a.marca}</strong><br><small>${a.targa}</small></td>
+                                <td>€${a.acquisto || 0}</td>
+                                <td class="text-red">€${a.speseRipristino || 0}</td>
+                                <td>€${totVolt}</td>
+                                <td class="text-green">€${totProv}</td>
+                                <td class="text-gold">€${a.prezzo || 0}</td>
+                                <td style="font-weight:bold; background:rgba(46,204,113,0.1);">€${margine}</td>
+                                <td><button class="btn-edit" onclick="openEdit('${a.id}')">EDIT</button></td>
+                            </tr>`;
+                        }).join('')}
+                    </tbody>
+                </table>`;
+        }
+    
+        // --- MODAL MODIFICA ---
+        function openEdit(id) {
+            currentEditId = id;
+            const car = listaAuto.find(x => x.id === id);
+            const fields = [
+                { id: 'dataInserimento', l: 'Data Entrata', v: formattaDataPerInput(car.dataInserimento), t: 'date' },
+                { id: 'dataVendita', l: 'Data Vendita', v: formattaDataPerInput(car.dataVendita), t: 'date' },
+                { id: 'acquisto', l: 'Costo Acquisto €', v: car.acquisto, t: 'number' },
+                { id: 'prezzo', l: 'Prezzo Vendita €', v: car.prezzo, t: 'number' },
+                { id: 'costoVoltura', l: 'Voltura €', v: car.costoVoltura, t: 'number' },
+                { id: 'costoMinivoltura', l: 'Mini €', v: car.costoMinivoltura, t: 'number' },
+                { id: 'provvigioneFinanziaria', l: 'Prov. Fin €', v: car.provvigioneFinanziaria, t: 'number' },
+                { id: 'provvigioneAssicurativa', l: 'Prov. Ass €', v: car.provvigioneAssicurativa, t: 'number' },
+                { id: 'speseRipristino', l: 'Tot. Ripristino € (Manuale)', v: car.speseRipristino, t: 'number' }
+            ];
+            document.getElementById('edit-form-content').innerHTML = fields.map(f => `
+                <div style="grid-column: ${f.t === 'date' ? 'span 2' : 'span 1'}">
+                    <label style="font-size:0.7rem; color:#d4af37;">${f.l}</label>
+                    <input id="edit_${f.id}" type="${f.t}" class="input-dark" value="${f.v || (f.t==='number'?0:'')}">
+                </div>
+            `).join('');
+            document.getElementById('edit-modal').style.display = 'block';
+            document.getElementById('overlay').style.display = 'block';
+        }
+    
+        function saveEconomicData() {
+            const updates = {
+                dataInserimento: document.getElementById('edit_dataInserimento').value ? new Date(document.getElementById('edit_dataInserimento').value).toISOString() : null,
+                dataVendita: document.getElementById('edit_dataVendita').value ? new Date(document.getElementById('edit_dataVendita').value).toISOString() : null,
+                acquisto: parseFloat(document.getElementById('edit_acquisto').value) || 0,
+                prezzo: parseFloat(document.getElementById('edit_prezzo').value) || 0,
+                costoVoltura: parseFloat(document.getElementById('edit_costoVoltura').value) || 0,
+                costoMinivoltura: parseFloat(document.getElementById('edit_costoMinivoltura').value) || 0,
+                provvigioneFinanziaria: parseFloat(document.getElementById('edit_provvigioneFinanziaria').value) || 0,
+                provvigioneAssicurativa: parseFloat(document.getElementById('edit_provvigioneAssicurativa').value) || 0,
+                speseRipristino: parseFloat(document.getElementById('edit_speseRipristino').value) || 0
+            };
+            database.ref('veicoli/' + currentEditId).update(updates);
+            closeEdit();
+        }
+    
+        function segnaVenduta(id) {
+            if(confirm("Spostare in Direzione?")) {
+                database.ref('veicoli/' + id).update({ stato: 'venduta', dataVendita: new Date().toISOString() });
+            }
+        }
+    
+        function closeEdit() { document.getElementById('edit-modal').style.display = 'none'; document.getElementById('overlay').style.display = 'none'; }
+        window.onload = refreshView;
+    </script>
+</body>
+</html>

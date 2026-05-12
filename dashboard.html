@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>MGV | Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;900&display=swap" rel="stylesheet">
+    <script src="shared.js"></script>
+    <!-- SDK FIREBASE V8 -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- Libreria per i grafici -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <aside class="sidebar">
+        <div style="padding: 40px 20px; text-align:center;"><h2 style="color:#d4af37; font-weight:900;">MGV</h2></div>
+        <a href="dashboard.html" class="nav-link active">📊 Dashboard</a>
+        <a href="parco.html" class="nav-link">🚗 Parco Veicoli</a>
+        <a href="officina.html" class="nav-link">🔧 Officina Prep</a>
+        <a href="commerciale.html" class="nav-link">🤝 Area Commerciale</a>
+        <a href="direzione.html" class="nav-link">📈 Direzione</a>
+    </aside>
+
+    <main class="main">
+        <h1>DASHBOARD<span>AUTO MGV</span> <small id="db-status" style="font-size:0.8rem; color:gray;">(Sincronizzazione...)</small></h1>
+        
+        <!-- KPI Cards AGGIORNATE -->
+        <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 15px; margin-bottom: 30px;">
+            <div class="card" style="text-align: center;">
+                <small style="color: #d4af37; letter-spacing: 1px;">STOCK ATTIVO</small>
+                <h2 id="count-stock" style="font-size: 2.5rem; margin-top: 10px;">0</h2>
+            </div>
+            <div class="card" style="text-align: center;">
+                <small style="color: #d4af37; letter-spacing: 1px;">IN PREPARAZIONE</small>
+                <h2 id="count-prep" style="font-size: 2.5rem; margin-top: 10px; color: #2ecc71;">0</h2>
+            </div>
+            <div class="card" style="text-align: center;">
+                <small style="color: #d4af37; letter-spacing: 1px;">VENDUTE</small>
+                <h2 id="count-vendute" style="font-size: 2.5rem; margin-top: 10px;">0</h2>
+            </div>
+            <div class="card" style="text-align: center; border-color: #444;">
+                <small style="color: #888; letter-spacing: 1px;">VALORE ACQUISTI</small>
+                <h2 id="sum-acquisto" style="font-size: 1.5rem; margin-top: 15px;">€ 0</h2>
+            </div>
+            <!-- NUOVA CARD MARGINE NETTO -->
+            <div class="card" style="text-align: center; border: 2px solid #2ecc71; background: rgba(46, 204, 113, 0.1);">
+                <small style="color: #2ecc71; letter-spacing: 1px; font-weight: 900;">MARGINE NETTO TOT.</small>
+                <h2 id="sum-margine" style="font-size: 1.5rem; margin-top: 15px; color: #2ecc71;">€ 0</h2>
+            </div>
+        </div>
+
+        <!-- Sezione Grafici -->
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-bottom: 30px;">
+            <div class="card">
+                <h3 style="margin-bottom: 20px;">Analisi Margini per Veicolo Venduto</h3>
+                <canvas id="chartMarginiVendute" height="120"></canvas>
+            </div>
+            <div class="card">
+                <h3 style="margin-bottom: 20px;">Stato Stock</h3>
+                <canvas id="chartStock" height="200"></canvas>
+            </div>
+        </div>
+
+        <!-- Tabella Focus -->
+        <div class="card">
+            <h3 style="border-bottom: 1px solid #333; padding-bottom: 15px;">Ultime operazioni registrate</h3>
+            <table style="width: 100%; margin-top: 10px; border-collapse: collapse;">
+                <thead>
+                    <tr style="text-align: left; color: #666; font-size: 0.8rem;">
+                        <th style="padding: 10px 0;">AUTO</th>
+                        <th>TARGA</th>
+                        <th>STATO</th>
+                        <th>MARGINE</th>
+                    </tr>
+                </thead>
+                <tbody id="mini-prep"></tbody>
+            </table>
+        </div>
+    </main>
+
+    <script>
+        const config = { databaseURL: "https://gestionale-mgv-default-rtdb.firebaseio.com/" };
+        firebase.initializeApp(config);
+        const database = firebase.database();
+
+        let chartMargini, chartStock;
+        let listaAuto = [];
+
+        database.ref('veicoli').on('value', (snapshot) => {
+            const data = snapshot.val();
+            listaAuto = [];
+            if (data) {
+                for (let id in data) {
+                    listaAuto.push({ id, ...data[id] });
+                }
+            }
+            document.getElementById('db-status').innerText = "(Cloud Sincronizzato)";
+            refreshDashboard();
+        });
+
+        function formatEuro(num) {
+            return "€ " + Number(num || 0).toLocaleString('it-IT');
+        }
+
+        function calcolaMargine(c) {
+            const acq = parseFloat(c.acquisto) || 0;
+            const prep = parseFloat(c.speseRipristino) || 0;
+            const volt = (parseFloat(c.costoVoltura) || 0) + (parseFloat(c.costoMinivoltura) || 0);
+            const prov = (parseFloat(c.provvigioneFinanziaria) || 0) + (parseFloat(c.provvigioneAssicurativa) || 0);
+            const vend = parseFloat(c.prezzo) || 0;
+            return vend + prov - (acq + prep + volt);
+        }
+
+        function refreshDashboard() {
+            const autoAttive = listaAuto.filter(c => c.stato !== 'venduta');
+            const inPrep = listaAuto.filter(c => c.step < 4 && c.stato !== 'venduta');
+            const vendute = listaAuto.filter(c => c.stato === 'venduta');
+            
+            const totaleAcquisto = autoAttive.reduce((acc, curr) => acc + (parseFloat(curr.acquisto) || 0), 0);
+            
+            // Calcolo Margine Netto Totale su tutte le vendute
+            const totaleMargine = vendute.reduce((acc, curr) => acc + calcolaMargine(curr), 0);
+
+            document.getElementById('count-stock').innerText = autoAttive.length;
+            document.getElementById('count-prep').innerText = inPrep.length;
+            document.getElementById('count-vendute').innerText = vendute.length;
+            document.getElementById('sum-acquisto').innerText = formatEuro(totaleAcquisto);
+            document.getElementById('sum-margine').innerText = formatEuro(totaleMargine);
+
+            // Tabella Focus
+            const ultimeAuto = [...listaAuto].reverse().slice(0, 5);
+            document.getElementById('mini-prep').innerHTML = ultimeAuto.map(c => {
+                const marg = c.stato === 'venduta' ? calcolaMargine(c) : 0;
+                return `
+                <tr style="border-bottom: 1px solid #222;">
+                    <td style="padding: 15px 0;"><strong>${(c.marca || '').toUpperCase()}</strong> ${c.modello || ''}</td>
+                    <td><span style="background:#000; padding:5px 10px; border-radius:5px; font-family:monospace; border: 1px solid #333;">${c.targa || '-'}</span></td>
+                    <td style="color:#d4af37; font-weight: bold;">${(c.stato || 'Disponibile').toUpperCase()}</td>
+                    <td style="color:${marg >= 0 ? '#2ecc71' : '#e74c3c'}">${c.stato === 'venduta' ? formatEuro(marg) : '--'}</td>
+                </tr>
+            `}).join('');
+
+            updateCharts(autoAttive, vendute);
+        }
+
+        function updateCharts(autoAttive, vendute) {
+            // Grafico Margini delle Vendute
+            const ctxM = document.getElementById('chartMarginiVendute').getContext('2d');
+            if(chartMargini) chartMargini.destroy();
+            
+            // Prendiamo le ultime 10 vendute per il grafico
+            const lastVendute = vendute.slice(-10);
+            
+            chartMargini = new Chart(ctxM, {
+                type: 'line',
+                data: {
+                    labels: lastVendute.map(a => a.targa || 'Auto'),
+                    datasets: [{
+                        label: 'Margine Netto €',
+                        data: lastVendute.map(a => calcolaMargine(a)),
+                        borderColor: '#2ecc71',
+                        backgroundColor: 'rgba(46, 204, 113, 0.2)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: { 
+                    plugins: { legend: { labels: { color: '#888' } } },
+                    scales: { 
+                        y: { grid: { color: '#222' }, ticks: { color: '#666'} }, 
+                        x: { ticks: { color: '#666'} } 
+                    }
+                }
+            });
+
+            // Grafico Stato Stock
+            const ctxS = document.getElementById('chartStock').getContext('2d');
+            if(chartStock) chartStock.destroy();
+            chartStock = new Chart(ctxS, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Pronta Consegna', 'In Preparazione'],
+                    datasets: [{
+                        data: [
+                            autoAttive.filter(c => c.archiviato).length,
+                            autoAttive.filter(c => !c.archiviato).length
+                        ],
+                        backgroundColor: ['#d4af37', '#444'],
+                        borderWidth: 0
+                    }]
+                },
+                options: { plugins: { legend: { position: 'bottom', labels: { color: '#ccc' } } } }
+            });
+        }
+    </script>
+</body>
+</html>

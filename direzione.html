@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>MGV | Registro Direzione Completo</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <script src="shared.js"></script>
+    <style>
+        body { margin: 0; background: #000; color: white; font-family: 'Outfit', sans-serif; }
+        .sidebar { height: 100vh; width: 250px; position: fixed; background: #000; border-right: 1px solid #222; }
+        .nav-link { display: block; padding: 15px 20px; color: #888; text-decoration: none; transition: 0.3s; }
+        .nav-link:hover, .nav-link.active { background: #d4af37; color: black; font-weight: bold; }
+        
+        .box-margine { background: #111; border: 2px solid #d4af37; padding: 20px; border-radius: 10px; margin-bottom: 30px; text-align: center; }
+        
+        .tabella-vendite { width: 100%; border-collapse: collapse; background: #0a0a0a; font-size: 0.8rem; }
+        .tabella-vendite th { background: #111; color: #d4af37; padding: 12px; border-bottom: 2px solid #333; text-align: left; text-transform: uppercase; font-size: 0.7rem; }
+        .tabella-vendite td { padding: 12px; border-bottom: 1px solid #222; }
+        
+        .val-positivo { color: #2ecc71; font-weight: bold; }
+        .val-negativo { color: #e74c3c; font-weight: bold; }
+        .text-gold { color: #d4af37; }
+
+        /* Modale per modifiche */
+        .modal-edit { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #111; border: 2px solid #d4af37; padding: 25px; z-index: 1000; border-radius: 12px; display: none; width: 500px; }
+        .overlay { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); display:none; z-index:999; }
+        .input-dark { background: #000; border: 1px solid #333; color: white; padding: 8px; border-radius: 4px; width: 100%; box-sizing: border-box; margin-top: 5px; }
+        .btn-edit { background: #333; color: white; border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer; }
+        .btn-edit:hover { background: #d4af37; color: black; }
+    </style>
+</head>
+<body>
+    <aside class="sidebar">
+        <div style="padding: 40px 20px; text-align:center;"><h2 style="color:#d4af37; font-weight:900;">MGV</h2></div>
+        <a href="dashboard.html" class="nav-link">📊 Dashboard</a>
+        <a href="parco.html" class="nav-link">🚗 Parco Veicoli</a>
+        <a href="officina.html" class="nav-link">🔧 Officina Prep</a>
+        <a href="commerciale.html" class="nav-link">🤝 Area Commerciale</a>
+        <a href="direzione.html" class="nav-link active">📈 Direzione</a>
+    </aside>
+
+    <main class="main" style="margin-left: 260px; padding: 20px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <h1 style="color:#d4af37;">📈 REGISTRO VENDITE & MARGINI</h1>
+            <span id="sync-status" style="color:gray; font-size:0.8rem;">Sincronizzazione...</span>
+        </div>
+
+        <div id="totale-mese" class="box-margine">
+            <p style="margin:0; color:#888;">MARGINE NETTO TOTALE (VENDUTO)</p>
+            <h1 id="margine-h1" style="margin:5px 0; color:#d4af37; font-size:3rem;">€ 0</h1>
+        </div>
+
+        <div style="background:#111; padding:15px; border-radius:10px; border:1px solid #222;">
+            <table class="tabella-vendite">
+                <thead>
+                    <tr>
+                        <th>Vendita</th>
+                        <th>Veicolo / Targa</th>
+                        <th>Acquisto</th>
+                        <th>Preparazione</th>
+                        <th>Volt./Mini</th>
+                        <th>Provvigioni</th>
+                        <th>Vendita</th>
+                        <th>MARGINE</th>
+                        <th>Azioni</th>
+                    </tr>
+                </thead>
+                <tbody id="corpo-tabella">
+                    <tr><td colspan="9" style="text-align:center; padding:20px;">Caricamento dati...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </main>
+
+    <!-- MODALE EDIT -->
+    <div id="overlay" class="overlay" onclick="closeEdit()"></div>
+    <div id="edit-modal" class="modal-edit">
+        <h3 style="color:#d4af37; margin-top:0;">MODIFICA DATI ECONOMICI</h3>
+        <div id="edit-form-content" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;"></div>
+        <button onclick="saveEconomicData()" style="width:100%; background:#d4af37; border:none; padding:12px; margin-top:20px; font-weight:bold; cursor:pointer; border-radius:4px; color:black;">AGGIORNA DATI</button>
+    </div>
+
+    <script>
+        const config = { databaseURL: "https://gestionale-mgv-default-rtdb.firebaseio.com/" };
+        firebase.initializeApp(config);
+        const database = firebase.database();
+
+        let listaAuto = [];
+        let currentEditId = null;
+
+        database.ref('veicoli').on('value', (snapshot) => {
+            const data = snapshot.val();
+            listaAuto = [];
+            if (data) {
+                for (let id in data) {
+                    if (data[id].stato === 'venduta') {
+                        listaAuto.push({ id, ...data[id] });
+                    }
+                }
+            }
+            document.getElementById('sync-status').innerText = "Cloud Sincronizzato";
+            renderDirezione();
+        });
+
+        function formatDate(iso) {
+            if(!iso) return "---";
+            const d = new Date(iso);
+            return d.toLocaleDateString('it-IT');
+        }
+
+        function formattaDataPerInput(iso) {
+            if(!iso) return "";
+            return iso.split('T')[0];
+        }
+
+        function renderDirezione() {
+            let totaleMargineGenerale = 0;
+
+            const html = listaAuto.map(car => {
+                const acq = parseFloat(car.acquisto) || 0;
+                const prep = parseFloat(car.speseRipristino) || 0;
+                const volt = (parseFloat(car.costoVoltura) || 0) + (parseFloat(car.costoMinivoltura) || 0);
+                const prov = (parseFloat(car.provvigioneFinanziaria) || 0) + (parseFloat(car.provvigioneAssicurativa) || 0);
+                const vend = parseFloat(car.prezzo) || 0;
+                
+                const margine = vend + prov - (acq + prep + volt);
+                totaleMargineGenerale += margine;
+
+                return `
+                <tr>
+                    <td class="text-gold">${formatDate(car.dataVendita)}</td>
+                    <td><b>${(car.marca || '').toUpperCase()}</b><br><small>${car.targa}</small></td>
+                    <td>€ ${acq.toLocaleString()}</td>
+                    <td style="color:#e74c3c;">€ ${prep.toLocaleString()}</td>
+                    <td>€ ${volt.toLocaleString()}</td>
+                    <td style="color:#2ecc71;">€ ${prov.toLocaleString()}</td>
+                    <td><b>€ ${vend.toLocaleString()}</b></td>
+                    <td class="${margine >= 0 ? 'val-positivo' : 'val-negativo'}">€ ${margine.toLocaleString()}</td>
+                    <td><button class="btn-edit" onclick="openEdit('${car.id}')">MODIFICA</button></td>
+                </tr>`;
+            }).join('');
+
+            document.getElementById('corpo-tabella').innerHTML = html || '<tr><td colspan="9" style="text-align:center; padding:20px;">Nessun dato trovato.</td></tr>';
+            document.getElementById('margine-h1').innerText = "€ " + totaleMargineGenerale.toLocaleString();
+        }
+
+        function openEdit(id) {
+            currentEditId = id;
+            const car = listaAuto.find(x => x.id === id);
+            const fields = [
+                { id: 'dataVendita', l: 'Data Vendita', v: formattaDataPerInput(car.dataVendita), t: 'date' },
+                { id: 'acquisto', l: 'Costo Acquisto €', v: car.acquisto, t: 'number' },
+                { id: 'prezzo', l: 'Prezzo Vendita €', v: car.prezzo, t: 'number' },
+                { id: 'costoVoltura', l: 'Voltura €', v: car.costoVoltura, t: 'number' },
+                { id: 'costoMinivoltura', l: 'Mini €', v: car.costoMinivoltura, t: 'number' },
+                { id: 'provvigioneFinanziaria', l: 'Prov. Fin €', v: car.provvigioneFinanziaria, t: 'number' },
+                { id: 'provvigioneAssicurativa', l: 'Prov. Ass €', v: car.provvigioneAssicurativa, t: 'number' },
+                { id: 'speseRipristino', l: 'Tot. Ripristino €', v: car.speseRipristino, t: 'number' }
+            ];
+            
+            document.getElementById('edit-form-content').innerHTML = fields.map(f => `
+                <div style="${f.t === 'date' ? 'grid-column: span 2' : ''}">
+                    <label style="font-size:0.7rem; color:#d4af37;">${f.l}</label>
+                    <input id="ed_${f.id}" type="${f.t}" class="input-dark" value="${f.v || (f.t==='number'?0:'')}">
+                </div>
+            `).join('');
+            
+            document.getElementById('edit-modal').style.display = 'block';
+            document.getElementById('overlay').style.display = 'block';
+        }
+
+        function saveEconomicData() {
+            const updates = {
+                dataVendita: document.getElementById('ed_dataVendita').value ? new Date(document.getElementById('ed_dataVendita').value).toISOString() : null,
+                acquisto: parseFloat(document.getElementById('ed_acquisto').value) || 0,
+                prezzo: parseFloat(document.getElementById('ed_prezzo').value) || 0,
+                costoVoltura: parseFloat(document.getElementById('ed_costoVoltura').value) || 0,
+                costoMinivoltura: parseFloat(document.getElementById('ed_costoMinivoltura').value) || 0,
+                provvigioneFinanziaria: parseFloat(document.getElementById('ed_provvigioneFinanziaria').value) || 0,
+                provvigioneAssicurativa: parseFloat(document.getElementById('ed_provvigioneAssicurativa').value) || 0,
+                speseRipristino: parseFloat(document.getElementById('ed_speseRipristino').value) || 0
+            };
+            database.ref('veicoli/' + currentEditId).update(updates);
+            closeEdit();
+        }
+
+        function closeEdit() { 
+            document.getElementById('edit-modal').style.display = 'none'; 
+            document.getElementById('overlay').style.display = 'none'; 
+        }
+    </script>
+</body>
+</html>

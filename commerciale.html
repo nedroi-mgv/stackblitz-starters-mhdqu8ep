@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>MGV | Area Commerciale Completa</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <style>
+        :root { --gold: #d4af37; --disponibile: #2ecc71; --trattativa: #f39c12; --venduta: #e74c3c; }
+        
+        /* Protezione flash: il body resta nascosto finché il JS non conferma il ruolo */
+        body { display: none; background: #000; color: #fff; margin: 0; font-family: 'Outfit'; min-height: 100vh; }
+        
+        .sidebar { width: 250px; min-width: 250px; background: #111; height: 100vh; position: sticky; top: 0; border-right: 1px solid #222; display: flex; flex-direction: column; }
+        .nav-link { padding: 15px 25px; color: #888; text-decoration: none; font-weight: 600; transition: 0.3s; border-left: 4px solid transparent; }
+        .nav-link:hover { background: #1a1a1a; color: #fff; }
+        .nav-link.active { background: #1a1a1a; color: var(--gold); border-left: 4px solid var(--gold); }
+
+        .main { flex-grow: 1; padding: 40px; min-width: 0; }
+        .car-row { background: #111; padding: 15px 20px; border-radius: 12px; margin-bottom: 12px; display: grid; grid-template-columns: 1.5fr 0.8fr 0.8fr 0.7fr 0.8fr 1fr 1fr auto; align-items: center; border: 1px solid #222; gap: 10px; }
+        .car-row:hover { border-color: var(--gold); }
+        .car-info-label { color: #666; font-size: 0.6rem; text-transform: uppercase; display: block; margin-bottom: 2px; }
+        
+        .select-stato { padding: 6px; border-radius: 6px; border: none; font-weight: 900; text-transform: uppercase; font-size: 0.7rem; cursor: pointer; }
+        .st-disponibile { background: var(--disponibile); color: #000; }
+        .st-trattativa { background: var(--trattativa); color: #000; }
+        .st-venduta { background: var(--venduta); color: #fff; }
+
+        .overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.95); z-index: 9999; padding: 20px; overflow-y: auto; }
+        .prev-sheet { background: white; padding: 40px; border-radius: 8px; max-width: 850px; margin: 20px auto; color: #000; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
+        .input-prev { border: 1px solid #ccc; padding: 10px; border-radius: 4px; width: 100%; margin-bottom: 10px; box-sizing: border-box; font-family: 'Outfit'; font-size: 1rem; }
+        .rata-box { background: #fdf7ed; border: 2px solid var(--gold); color: #000; padding: 15px; border-radius: 8px; text-align: center; margin-top: 10px; }
+        .total-banner { background: #000; color: #fff !important; padding: 20px; font-size: 1.8rem; font-weight: 900; display: flex; justify-content: space-between; border-radius: 8px; margin-top: 20px; }
+        
+        .btn-switch { background: transparent; color: var(--gold); border: 2px solid var(--gold); padding: 10px 20px; border-radius: 8px; font-weight: 900; cursor: pointer; transition: 0.3s; }
+
+        @media print {
+            .no-print, .sidebar, .btn-switch { display: none !important; }
+            body { background: white !important; color: black !important; display: block !important; }
+            .overlay { position: absolute !important; display: block !important; background: white !important; padding: 0 !important; width: 100% !important; top: 0 !important; }
+            .prev-sheet { margin: 0 !important; padding: 0 !important; width: 100% !important; box-shadow: none !important; border: none !important; }
+            .total-banner { background: #000 !important; color: #fff !important; -webkit-print-color-adjust: exact; }
+            input, textarea, select { border: none !important; padding: 0 !important; appearance: none; -webkit-appearance: none; }
+        }
+    </style>
+</head>
+<body>
+
+    <aside class="sidebar no-print">
+        <div style="padding: 40px 20px; text-align:center;"><h2 style="color:var(--gold); font-weight:900;">MGV</h2></div>
+        <!-- Aggiunti ID ai link per il controllo visibilità -->
+        <a href="dashboard.html" id="link-dash" class="nav-link">📊 Dashboard</a>
+        <a href="parco.html" id="link-parco" class="nav-link">🚗 Parco Veicoli</a>
+        <a href="officina.html" id="link-off" class="nav-link">🔧 Officina Prep</a>
+        <a href="commerciale.html" id="link-comm" class="nav-link active">🤝 Area Commerciale</a>
+        <a href="direzione.html" id="link-dir" class="nav-link">📈 Direzione</a>
+    </aside>
+
+    <main class="main">
+        <div id="sezione-commerciale">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:25px;">
+                <h1 style="font-weight:900; margin:0;">AREA <span style="color:var(--gold);">COMMERCIALE</span></h1>
+                <button class="btn-switch" onclick="switchSezione('archivio')">📁 VEDI ARCHIVIO PREVENTIVI</button>
+            </div>
+            <input type="text" id="searchInput" placeholder="Cerca Marca, Modello o Targa..." oninput="renderStock()" style="width:100%; padding:15px; background:#111; border:1px solid #333; color:#fff; border-radius:10px; outline:none; border-left:4px solid var(--gold); margin-bottom:20px;">
+            <div id="full-stock-list"></div>
+        </div>
+
+        <div id="sezione-archivio" style="display:none;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:25px;">
+                <h1 style="font-weight:900; margin:0;">ARCHIVIO <span style="color:var(--gold);">PREVENTIVI</span></h1>
+                <button class="btn-switch" onclick="switchSezione('commerciale')">🚗 TORNA A VENDITA</button>
+            </div>
+            <input type="text" id="searchArchivio" placeholder="Cerca Cliente, Venditore, Targa..." oninput="renderArchivio()" style="width:100%; padding:15px; background:#111; border:1px solid #333; color:#fff; border-radius:10px; outline:none; border-left:4px solid var(--gold); margin-bottom:20px;">
+            <div id="lista-archivio"></div>
+        </div>
+    </main>
+
+    <div id="modal-sale" class="overlay">
+        <div class="no-print" style="max-width:850px; margin:0 auto 10px; display:flex; justify-content: space-between; align-items:center;">
+            <button onclick="document.getElementById('modal-sale').style.display='none'" style="padding:10px 20px; background:#333; color:white; border:none; border-radius:5px; cursor:pointer;">← CHIUDI</button>
+            <button id="btn-salva-stampa" onclick="salvaEStampa()" style="padding:10px 25px; background:var(--gold); color:white; border:none; font-weight:bold; cursor:pointer; border-radius:5px;">STAMPA E ARCHIVIA</button>
+        </div>
+        <div id="modal-content" class="prev-sheet"></div>
+    </div>
+
+    <script>
+        // --- BLOCCO DI SICUREZZA E GESTIONE RUOLI ---
+        (function() {
+            const userRole = localStorage.getItem('mgv_role');
+            
+            // 1. Controllo Accesso Pagina
+            if (!userRole || (userRole !== 'admin' && userRole !== 'commerciale')) {
+                window.location.href = "index.html"; 
+                return;
+            }
+
+            // 2. Se autorizzato, rendi visibile il body
+            document.body.style.display = "flex";
+
+            // 3. Nascondi sezioni sidebar non autorizzate per il commerciale
+            window.addEventListener('DOMContentLoaded', () => {
+                if (userRole === 'commerciale') {
+                    const toHide = ['link-parco', 'link-off', 'link-dir'];
+                    toHide.forEach(id => {
+                        const el = document.getElementById(id);
+                        if (el) el.style.display = 'none';
+                    });
+                }
+            });
+        })();
+        // --------------------------------------------
+
+        const config = { databaseURL: "https://gestionale-mgv-default-rtdb.firebaseio.com/" };
+        if (!firebase.apps.length) firebase.initializeApp(config);
+        const database = firebase.database();
+
+        let listaAuto = [];
+        let listaPreventivi = [];
+
+        const listinoVolture = {
+            53: 440, 54: 490, 55: 495, 56: 500, 57: 505, 58: 510, 59: 515, 60: 518, 61: 522, 62: 527, 63: 532, 64: 537, 65: 540, 66: 545, 67: 550, 68: 555, 69: 560, 70: 564, 71: 569, 72: 572, 73: 577, 74: 581, 75: 586, 76: 591, 77: 595, 78: 600, 79: 605, 80: 610, 81: 613, 82: 618, 83: 623, 84: 627, 85: 632, 86: 637, 87: 642, 88: 645, 89: 650, 90: 655, 91: 660, 92: 665, 93: 668, 94: 673, 95: 678, 96: 682, 97: 686, 98: 691, 99: 695, 100: 700, 101: 705, 102: 709, 103: 714, 104: 718, 105: 723, 106: 728, 107: 732, 108: 737, 109: 741, 110: 746, 111: 750, 112: 755, 113: 760, 114: 764, 115: 769, 116: 773, 117: 778, 118: 783, 119: 787, 120: 792, 121: 796, 122: 801, 123: 806, 124: 810, 125: 815, 126: 819, 127: 824, 128: 829, 129: 833, 130: 838, 131: 842, 132: 847, 133: 851, 134: 856, 135: 861, 136: 865, 137: 870, 138: 874, 139: 879, 140: 884, 141: 888, 142: 893, 143: 897, 144: 902, 145: 907, 146: 911, 147: 916, 148: 920, 149: 925, 150: 930
+        };
+
+        let carSelezionata = null;
+
+        database.ref('veicoli').on('value', (snap) => {
+            listaAuto = [];
+            const data = snap.val();
+            for (let id in data) listaAuto.push({ id, ...data[id] });
+            renderStock();
+        });
+
+        database.ref('preventivi').on('value', (snap) => {
+            listaPreventivi = [];
+            const data = snap.val();
+            for (let id in data) listaPreventivi.push({ id, ...data[id] });
+            renderArchivio();
+        });
+
+        function switchSezione(s) {
+            document.getElementById('sezione-commerciale').style.display = s === 'commerciale' ? 'block' : 'none';
+            document.getElementById('sezione-archivio').style.display = s === 'archivio' ? 'block' : 'none';
+        }
+
+        function renderStock() {
+            const term = document.getElementById('searchInput').value.toLowerCase().trim();
+            const filtered = listaAuto.filter(c => ((c.marca||'') + " " + (c.modello||'') + " " + (c.targa||'')).toLowerCase().includes(term));
+            document.getElementById('full-stock-list').innerHTML = filtered.map(c => `
+                <div class="car-row">
+                    <div><span class="car-info-label">Veicolo</span><strong>${c.marca}</strong><br><small>${c.modello}</small></div>
+                    <div><span class="car-info-label">Targa</span><span style="background:#222; padding:2px 5px; border-radius:4px; font-family:monospace;">${c.targa}</span></div>
+                    <div><span class="car-info-label">Anno</span>${c.anno || '--'}</div>
+                    <div><span class="car-info-label">KM</span>${Number(c.km || 0).toLocaleString()}</div>
+                    <div><span class="car-info-label">Potenza</span>${c.kw || '--'} KW</div>
+                    <div>
+                        <select class="select-stato st-${c.stato || 'disponibile'}" onchange="updateStatoCloud('${c.id}', this.value)">
+                            <option value="disponibile" ${c.stato==='disponibile'?'selected':''}>Disponibile</option>
+                            <option value="trattativa" ${c.stato==='trattativa'?'selected':''}>In Trattativa</option>
+                            <option value="venduta" ${c.stato==='venduta'?'selected':''}>Venduta</option>
+                        </select>
+                    </div>
+                    <div style="font-weight:900; color:var(--gold);">€ ${Number(c.prezzo || 0).toLocaleString()}</div>
+                    <button onclick="apriPrev('${c.id}')" style="padding:10px; background:var(--gold); border:none; color:white; cursor:pointer; font-weight:bold; border-radius:6px;">PREVENTIVO</button>
+                </div>
+            `).join('');
+        }
+
+        function updateStatoCloud(id, nuovoStato) {
+            database.ref('veicoli/' + id).update({ stato: nuovoStato });
+        }
+
+        function apriPrev(id, pEsistente = null) {
+            carSelezionata = pEsistente ? pEsistente.carOrig : listaAuto.find(x => x.id === id);
+            if(!carSelezionata) return;
+            document.getElementById('modal-sale').style.display = 'block';
+            document.getElementById('btn-salva-stampa').style.display = pEsistente ? 'none' : 'block';
+
+            document.getElementById('modal-content').innerHTML = `
+                <div style="display:flex; justify-content:space-between; border-bottom:4px solid #000; padding-bottom:15px; margin-bottom:25px;">
+                    <div><h1 style="margin:0; font-size:2rem;">AUTO MGV SRL</h1><p style="margin:0; font-size:0.9rem;">Via F. Baracca 1 La Loggia 10040 (TO)</p></div>
+                    <div style="text-align:right;"><h2 style="color:var(--gold); margin:0; font-size:1.4rem;">PROPOSTA D'ACQUISTO</h2><p>Data: ${pEsistente ? pEsistente.data : new Date().toLocaleDateString()}</p></div>
+                </div>
+                <div class="form-grid">
+                    <div>
+                        <h3 style="background:#000; color:#fff; padding:5px 10px; font-size:0.8rem;">DATI CLIENTE</h3>
+                        <input type="text" id="f_nome" class="input-prev" placeholder="Nome e Cognome" value="${pEsistente?.cliente || ''}">
+                        <input type="text" id="f_tel" class="input-prev" placeholder="Telefono" value="${pEsistente?.telefono || ''}">
+                        
+                        <h3 style="background:#eee; color:#000; padding:5px 10px; margin-top:15px; font-size:0.8rem;">DETTAGLI AUTO</h3>
+                        <div style="font-size:1rem; line-height:1.6;">
+                            <strong style="font-size:1.2rem;">${carSelezionata.marca} ${carSelezionata.modello}</strong><br>
+                            Targa: <b>${carSelezionata.targa}</b> | Anno: <b>${carSelezionata.anno}</b><br>
+                            KM: <b>${Number(carSelezionata.km).toLocaleString()}</b> | KW: <b>${carSelezionata.kw || '--'}</b>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 style="background:#000; color:#fff; padding:5px 10px; font-size:0.8rem;">SERVIZI</h3>
+                        <div class="no-print"><label><input type="checkbox" id="f_king" ${pEsistente?.isKing !== false ? 'checked' : ''} onchange="refreshCalcoli()"> PROMO KING (- € 3.000)</label></div>
+                        
+                        <div style="display:flex; gap:10px;">
+                            <input type="text" id="v_ass_desc" class="input-prev" placeholder="Quali servizi extra?" value="${pEsistente?.assDesc || ''}" style="flex:2;">
+                            <input type="number" id="v_ass" class="input-prev" placeholder="Importo €" value="${pEsistente?.ass || 0}" oninput="refreshCalcoli()" style="flex:1;">
+                        </div>
+
+                        <div class="rata-box">
+                            <small>RATA STIMATA</small><br>
+                            <div style="display:flex; align-items:center; justify-content:center; gap:5px;">
+                                € <input type="text" id="v_rata" value="${pEsistente?.rata || 0}" style="width:80px; font-size:1.8rem; font-weight:900; border:none; background:transparent; text-align:center; outline:none;">
+                                <span>x</span>
+                                <select id="v_mesi" style="font-size:1.2rem; font-weight:bold; border:1px solid var(--gold); border-radius:5px; padding:2px;">
+                                    ${[12,24,36,48,60,72,84,96].map(m => `<option value="${m}" ${pEsistente?.mesi == m ? 'selected' : (m==60?'selected':'')}>${m}</option>`).join('')}
+                                </select>
+                                <small>mesi</small>
+                            </div>
+                        </div>
+
+                        <div class="no-print" style="margin-top:10px;"><label><input type="checkbox" id="f_perm_check" ${pEsistente?.isPermuta ? 'checked' : ''} onchange="togglePermuta()"> INSERISCI PERMUTA</label></div>
+                        <div id="wrap-permuta" style="display:${pEsistente?.isPermuta ? 'block' : 'none'}; border:1px dashed #ccc; padding:10px; margin-top:10px;">
+                            <input type="text" id="f_auto_perm" class="input-prev" placeholder="Veicolo in permuta" value="${pEsistente?.autoPermuta || ''}">
+                            <input type="number" id="v_perm" class="input-prev" placeholder="Valutazione €" value="${pEsistente?.valPermuta || 0}" oninput="refreshCalcoli()">
+                        </div>
+                    </div>
+                </div>
+
+                <div id="output-prezzi"></div>
+
+                <div class="form-grid" style="margin-top:30px; border-top:2px solid #eee; padding-top:20px;">
+                    <div>
+                        <h3 style="background:#000; color:#fff; padding:5px 10px; font-size:0.8rem;">VENDITORE</h3>
+                        <input type="text" id="f_venditore" class="input-prev" placeholder="Nome Venditore" value="${pEsistente?.venditore || ''}">
+                        <input type="email" id="f_mail_venditore" class="input-prev" placeholder="Mail Venditore" value="${pEsistente?.mailVenditore || ''}">
+                        <input type="text" id="f_tel_venditore" class="input-prev" placeholder="Telefono Venditore" value="${pEsistente?.telVenditore || ''}">
+                    </div>
+                    <div>
+                        <h3 style="background:#000; color:#fff; padding:5px 10px; font-size:0.8rem;">NOTE</h3>
+                        <textarea id="f_note" class="input-prev" style="height:115px; resize:none;" placeholder="Inserisci qui eventuali note o accordi...">${pEsistente?.note || ''}</textarea>
+                    </div>
+                </div>
+
+                <div style="margin-top:30px; display:flex; justify-content:space-between; font-size:0.7rem; color:#888;">
+                    <div style="border-top:1px solid #ccc; width:200px; text-align:center; padding-top:5px;">Firma Cliente</div>
+                    <div style="border-top:1px solid #ccc; width:200px; text-align:center; padding-top:5px;">Firma Venditore</div>
+                </div>
+            `;
+            refreshCalcoli();
+        }
+
+        function togglePermuta() {
+            document.getElementById('wrap-permuta').style.display = document.getElementById('f_perm_check').checked ? 'block' : 'none';
+            refreshCalcoli();
+        }
+
+        function refreshCalcoli() {
+            if(!carSelezionata) return;
+            const king = document.getElementById('f_king').checked;
+            const ass = parseFloat(document.getElementById('v_ass').value) || 0;
+            const permutaVal = parseFloat(document.getElementById('v_perm')?.value) || 0;
+            const checkPermuta = document.getElementById('f_perm_check').checked;
+            const prezzoBase = parseFloat(carSelezionata.prezzo || 0);
+            const pScontato = king ? prezzoBase : (prezzoBase + 3000);
+            
+            const kw = parseInt(carSelezionata.kw) || 0;
+            const pass = listinoVolture[kw] || 650;
+            
+            const mini = checkPermuta ? 200 : 0;
+            const totale = pScontato + pass + mini + ass - permutaVal;
+
+            document.getElementById('output-prezzi').innerHTML = `
+                <table style="width:100%; margin-top:25px; border-top:3px solid #000; font-size:1.1rem;">
+                    <tr><td>Prezzo Veicolo:</td><td align="right">€ ${pScontato.toLocaleString()}</td></tr>
+                    <tr><td>Passaggio Proprietà (IPT ${kw} KW):</td><td align="right">€ ${pass.toLocaleString()}</td></tr>
+                    ${checkPermuta ? `<tr><td>Minivoltura Permuta:</td><td align="right">€ 200</td></tr>` : ''}
+                    ${ass > 0 ? `<tr><td>Servizi / Assicurazione:</td><td align="right">€ ${ass.toLocaleString()}</td></tr>` : ''}
+                    ${permutaVal > 0 ? `<tr style="color:#e74c3c;"><td>Valutazione Permuta:</td><td align="right">- € ${permutaVal.toLocaleString()}</td></tr>` : ''}
+                </table>
+                <div class="total-banner"><span>TOTALE CHIAVI IN MANO</span><span id="final-tot">€ ${totale.toLocaleString()}</span></div>
+            `;
+        }
+
+        function salvaEStampa() {
+            const prev = {
+                cliente: document.getElementById('f_nome').value,
+                telefono: document.getElementById('f_tel').value,
+                venditore: document.getElementById('f_venditore').value,
+                mailVenditore: document.getElementById('f_mail_venditore').value,
+                telVenditore: document.getElementById('f_tel_venditore').value,
+                note: document.getElementById('f_note').value,
+                data: new Date().toLocaleDateString(),
+                carOrig: carSelezionata,
+                isKing: document.getElementById('f_king').checked,
+                ass: document.getElementById('v_ass').value,
+                assDesc: document.getElementById('v_ass_desc').value,
+                rata: document.getElementById('v_rata').value,
+                mesi: document.getElementById('v_mesi').value,
+                isPermuta: document.getElementById('f_perm_check').checked,
+                autoPermuta: document.getElementById('f_auto_perm')?.value || '',
+                valPermuta: document.getElementById('v_perm')?.value || 0,
+                totale: document.getElementById('final-tot').innerText
+            };
+            database.ref('preventivi').push(prev).then(() => { window.print(); });
+        }
+
+        function renderArchivio() {
+            const term = document.getElementById('searchArchivio').value.toLowerCase().trim();
+            const filtered = listaPreventivi.filter(p => ((p.cliente||'') + " " + (p.venditore||'') + " " + (p.carOrig?.targa||'')).toLowerCase().includes(term));
+            document.getElementById('lista-archivio').innerHTML = filtered.reverse().map(p => `
+                <div style="background:#111; border:1px solid #333; padding:15px; border-radius:10px; margin-bottom:10px; display:flex; justify-content:space-between; cursor:pointer;" onclick='apriPrev(null, ${JSON.stringify(p).replace(/'/g, "&apos;")})'>
+                    <div><strong>${p.cliente}</strong><br><small>${p.carOrig?.marca} ${p.carOrig?.modello} (${p.carOrig?.targa})</small></div>
+                    <div style="text-align:right;"><strong>${p.totale}</strong><br><small>${p.data} - ${p.venditore}</small></div>
+                </div>
+            `).join('');
+        }
+    </script>
+</body>
+</html>

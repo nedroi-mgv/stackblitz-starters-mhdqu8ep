@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>MGV | Login</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;600;900&display=swap" rel="stylesheet">
+    <style>
+        body { display: flex; align-items: center; justify-content: center; height: 100vh; background: #000; margin: 0; }
+        .login-card { background: #111; padding: 40px; border-radius: 24px; border: 1px solid #c5a059; width: 100%; max-width: 400px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .logo-gold { color: #c5a059; font-weight: 900; letter-spacing: 5px; margin-bottom: 30px; font-size: 2rem; }
+        .error-msg { color: #ff4d4d; font-size: 0.8rem; margin-top: 15px; display: none; font-weight: bold; }
+        
+        /* Stile aggiuntivo per l'input per coerenza con style.css */
+        .input-dark {
+            background: #000; border: 1px solid #2a2a2e; color: #fff;
+            padding: 12px 18px; border-radius: 10px; width: 100%; transition: 0.3s;
+            box-sizing: border-box;
+        }
+        .input-dark:focus { border-color: #c5a059; outline: none; }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="logo-gold">MGV</div>
+        <h3 style="margin-bottom: 20px; color: #fff; font-family: 'Outfit';">ACCESSO SISTEMA</h3>
+        
+        <input type="password" id="passInput" class="input-dark" placeholder="Inserisci Password..." style="text-align: center;">
+        
+        <button onclick="checkLogin()" class="btn" style="width: 100%; margin-top: 20px; cursor: pointer;">ENTRA</button>
+        
+        <p id="error" class="error-msg">⚠️ Password errata. Riprova.</p>
+    </div>
+
+    <script>
+        // Pulisce eventuali sessioni precedenti all'apertura della pagina
+        localStorage.removeItem('mgv_role');
+
+        function checkLogin() {
+            const pass = document.getElementById('passInput').value;
+            const errorElement = document.getElementById('error');
+            let role = "";
+
+            // 1. Logica di assegnazione Ruoli basata sulla password
+            if (pass === "admin2026") {
+                role = "admin";       // Accesso totale
+            } else if (pass === "officina2026") {
+                role = "officina";    // Solo Officina
+            } else if (pass === "commerciale2026") {
+                role = "commerciale"; // Solo Area Commerciale
+            }
+
+            // 2. Verifica e Reindirizzamento
+            if (role !== "") {
+                localStorage.setItem('mgv_role', role); // Salva il ruolo nel browser
+                window.location.href = "dashboard.html"; // Vai alla dashboard
+            } else {
+                // Mostra messaggio di errore
+                errorElement.style.display = "block";
+                document.getElementById('passInput').value = ""; // Svuota il campo
+                document.getElementById('passInput').focus();
+            }
+        }
+        
+        // Gestione tasto INVIO per comodità
+        document.getElementById('passInput').addEventListener('keypress', function (e) {
+            if (e.key === 'Enter') {
+                checkLogin();
+            }
+        });
+    </script>
+</body>
+</html>

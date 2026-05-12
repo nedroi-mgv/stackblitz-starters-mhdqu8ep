@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>MGV | Parco Veicoli</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="manifest" href="manifest.json">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+    <script src="shared.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <style>
+        .filter-bar { background: #1a1a1a; padding: 20px; border-radius: 12px; margin-bottom: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; align-items: end; border: 1px solid #333; }
+        .filter-group { display: flex; flex-direction: column; gap: 5px; }
+        .filter-group label { font-size: 0.7rem; color: #d4af37; font-weight: 600; text-transform: uppercase; }
+        .filter-input { padding: 10px; border-radius: 6px; border: 1px solid #333; background: #0b0b0b; color: white; font-family: 'Outfit'; }
+        .targa-box { background: #eee; color: #111; padding: 3px 8px; border-radius: 4px; font-weight: 700; font-family: monospace; font-size: 0.85rem; }
+        .g-badge { padding: 4px 8px; border-radius: 6px; font-weight: 900; font-size: 0.7rem; }
+        .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.65rem; font-weight: 800; text-align: center; display: inline-block; min-width: 30px; }
+        .color-dot { 
+            display: inline-block; width: 14px; height: 14px; border-radius: 50%; 
+            margin-right: 8px; border: 2px solid rgba(255,255,255,0.5); vertical-align: middle;
+            box-shadow: 0 0 5px rgba(0,0,0,0.5);
+        }
+    </style>
+</head>
+<body>
+    <aside class="sidebar">
+        <div style="padding: 40px 20px; text-align:center;"><h2 style="color:#d4af37; font-weight:900;">MGV</h2></div>
+        <a href="dashboard.html" class="nav-link">📊 Dashboard</a>
+        <a href="parco.html" class="nav-link active">🚗 Parco Veicoli</a>
+        <a href="officina.html" class="nav-link">🔧 Officina Prep</a>
+        <a href="commerciale.html" class="nav-link">🤝 Area Commerciale</a>
+        <a href="direzione.html" class="nav-link">📈 Direzione</a>
+    </aside>
+
+    <main class="main">
+        <h2>STOCK MGV  <span id="status" style="font-size:0.7rem; color:#2ecc71;">(CARICAMENTO...)</span></h2>
+
+        <div class="filter-bar">
+            <div class="filter-group">
+                <label>Ricerca Rapida</label>
+                <input type="text" id="fSearch" class="filter-input" placeholder="Targa, Marca..." oninput="renderTable()">
+            </div>
+            <div class="filter-group">
+                <button class="btn" onclick="addAuto()" style="background:#d4af37; color:black; font-weight:bold; height:40px;">+ AGGIUNGI AUTO</button>
+            </div>
+        </div>
+
+        <div class="card" style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>GIACENZA</th>
+                        <th>ENTRATA</th>
+                        <th>AUTO</th>
+                        <th>TARGA</th>
+                        <th>KM</th>
+                        <th>ANNO</th>
+                        <th>KW</th>
+                        <th>REV</th>
+                        <th>CHIAVI</th>
+                        <th>COLORE</th>
+                        <th>ACQUISTO</th>
+                        <th>PROMO</th>
+                        <th>AZIONI</th>
+                    </tr>
+                </thead>
+                <tbody id="carBody"></tbody>
+            </table>
+        </div>
+    </main>
+
+    <script>
+        const config = { databaseURL: "https://gestionale-mgv-default-rtdb.firebaseio.com/" };
+        firebase.initializeApp(config);
+        const database = firebase.database();
+        let listaAuto = [];
+
+        // Funzione per convertire GG/MM/AAAA in un oggetto Data valido per il calcolo
+        function parseItalianDate(dateStr) {
+            if(!dateStr || !dateStr.includes('/')) return new Date();
+            const parts = dateStr.split('/');
+            // format: new Date(year, monthIndex, day)
+            return new Date(parts[2], parts[1] - 1, parts[0]);
+        }
+
+        function getCssColor(colore) {
+            const c = (colore || '').toLowerCase().trim();
+            const map = { 
+                'rosso': '#ff0000', 'blu': '#0000ff', 'nero': '#000000', 'bianco': '#ffffff', 
+                'grigio': '#808080', 'argento': '#c0c0c0', 'verde': '#008000', 'giallo': '#ffff00',
+                'marrone': '#8b4513', 'arancione': '#ffa500'
+            };
+            return map[c] || '#555';
+        }
+
+        database.ref('veicoli').on('value', (snapshot) => {
+            const data = snapshot.val();
+            listaAuto = [];
+            if (data) {
+                for (let id in data) { listaAuto.push({ id, ...data[id] }); }
+                document.getElementById('status').innerText = "(LIVE: " + listaAuto.length + " VEICOLI)";
+            }
+            renderTable();
+        });
+
+        function renderTable() {
+    const body = document.getElementById('carBody');
+    const search = document.getElementById('fSearch').value.toLowerCase();
+    
+    const filtered = listaAuto.filter(a => {
+        // Uniamo tutti i valori dell'auto in una stringa unica per cercare ovunque
+        const stringaTotale = Object.values(a).join(" ").toLowerCase();
+        return stringaTotale.includes(search);
+    });
+
+    body.innerHTML = filtered.map(a => {
+        const oggi = new Date();
+        const entrata = a.dataEntrata ? parseItalianDate(a.dataEntrata) : oggi;
+        const diffTime = oggi - entrata;
+        const gg = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+
+        return `
+        <tr>
+            <td><span class="g-badge" style="background:${gg > 45 ? '#e74c3c' : 'rgba(46, 204, 113, 0.1)'}; color:${gg > 45 ? '#fff' : '#2ecc71'};">${gg} GG</span></td>
+            <td style="font-size:0.7rem;">${a.dataEntrata || '-'}</td>
+            <td><strong>${(a.marca || '').toUpperCase()}</strong> ${a.modello || ''}</td>
+            <td><span class="targa-box">${a.targa || ''}</span></td>
+            <td>${Number(a.km || 0).toLocaleString()}</td>
+            <td>${a.anno || '-'}</td>
+            <td>${a.kw || '-'}</td>
+            <td><span class="status-badge" style="background:${a.rev === 'SI' ? '#27ae60' : '#c0392b'}; color:white">${a.rev || 'NO'}</span></td>
+            <td><span class="status-badge" style="background:${a.chiavi === 'SI' ? '#2980b9' : '#7f8c8d'}; color:white">${a.chiavi || 'NO'}</span></td>
+            <td><span class="color-dot" style="background:${getCssColor(a.colore)}"></span>${a.colore || '-'}</td>
+            <td>€ ${Number(a.acquisto || 0).toLocaleString()}</td>
+            <td style="color:#d4af37; font-weight:bold;">€ ${Number(a.prezzo || 0).toLocaleString()}</td>
+            <td>
+                <button onclick="editAuto('${a.id}')" style="background:#444; color:white; border:none; padding:5px 10px; cursor:pointer; border-radius:4px;">MODIFICA</button>
+                <button onclick="deleteAuto('${a.id}')" style="background:#c0392b; color:white; border:none; padding:5px 10px; cursor:pointer; border-radius:4px;">X</button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+        function addAuto() {
+            const marca = prompt("Marca:");
+            const modello = prompt("Modello:");
+            const targa = prompt("Targa:").toUpperCase();
+            
+            // Imposta default oggi in formato italiano
+            const oggi = new Date();
+            const defaultData = oggi.getDate().toString().padStart(2, '0') + '/' + (oggi.getMonth() + 1).toString().padStart(2, '0') + '/' + oggi.getFullYear();
+            
+            const dataE = prompt("Data Entrata (GG/MM/AAAA):", defaultData);
+            
+            const km = prompt("Chilometri:");
+            const anno = prompt("Anno:");
+            const kw = prompt("KW:");
+            const rev = (prompt("Revisione OK? (SI/NO):", "SI") || "SI").toUpperCase();
+            const chiavi = (prompt("Doppie chiavi? (SI/NO):", "SI") || "SI").toUpperCase();
+            const col = prompt("Colore:");
+            const acq = prompt("Prezzo Acquisto:");
+            const prezzo = prompt("Prezzo Vendita/Promo:");
+
+            if (marca && targa) {
+                database.ref('veicoli').push({
+                    marca, modello, targa, dataEntrata: dataE, km, anno, kw, rev, chiavi, colore: col, acquisto: acq, prezzo: prezzo
+                });
+            }
+        }
+
+        function editAuto(id) {
+            const a = listaAuto.find(x => x.id === id);
+            if(!a) return;
+
+            const marca = prompt("Modifica Marca:", a.marca) || a.marca;
+            const modello = prompt("Modello:", a.modello) || a.modello;
+            const targa = (prompt("Targa:", a.targa) || a.targa).toUpperCase();
+            const dataEntrata = prompt("Data Entrata (GG/MM/AAAA):", a.dataEntrata) || a.dataEntrata;
+            const km = prompt("KM:", a.km) || a.km;
+            const anno = prompt("Anno:", a.anno) || a.anno;
+            const kw = prompt("KW:", a.kw || "") || a.kw;
+            const rev = (prompt("Revisione (SI/NO):", a.rev) || a.rev).toUpperCase();
+            const chiavi = (prompt("Doppie chiavi (SI/NO):", a.chiavi) || a.chiavi).toUpperCase();
+            const colore = prompt("Colore:", a.colore) || a.colore;
+            const acquisto = prompt("Prezzo Acquisto:", a.acquisto) || a.acquisto;
+            const prezzo = prompt("Prezzo Promo:", a.prezzo) || a.prezzo;
+
+            database.ref('veicoli/' + id).update({
+                marca, modello, targa, dataEntrata, km, anno, kw, rev, chiavi, colore, acquisto, prezzo
+            });
+        }
+
+        function deleteAuto(id) {
+            if (confirm("Eliminare definitivamente?")) { database.ref('veicoli/' + id).remove(); }
+        }
+    </script>
+</body>
+</html>
