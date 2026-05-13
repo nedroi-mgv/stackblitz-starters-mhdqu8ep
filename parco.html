@@ -44,7 +44,7 @@
         <div class="filter-bar">
             <div class="filter-group">
                 <label>Ricerca Rapida</label>
-                <input type="text" id="fSearch" class="filter-input" placeholder="Targa, Marca..." oninput="renderTable()">
+                <input type="text" id="fSearch" class="filter-input" placeholder="Targa, Marca, Fornitore..." oninput="renderTable()">
             </div>
             <div class="filter-group">
                 <button class="btn" onclick="addAuto()" style="background:#d4af37; color:black; font-weight:bold; height:40px;">+ AGGIUNGI AUTO</button>
@@ -61,6 +61,7 @@
                         <th>TARGA</th>
                         <th>KM</th>
                         <th>ANNO</th>
+                        <th>FORNITORE</th>
                         <th>KW</th>
                         <th>REV</th>
                         <th>CHIAVI</th>
@@ -81,11 +82,9 @@
         const database = firebase.database();
         let listaAuto = [];
 
-        // Funzione per convertire GG/MM/AAAA in un oggetto Data valido per il calcolo
         function parseItalianDate(dateStr) {
             if(!dateStr || !dateStr.includes('/')) return new Date();
             const parts = dateStr.split('/');
-            // format: new Date(year, monthIndex, day)
             return new Date(parts[2], parts[1] - 1, parts[0]);
         }
 
@@ -110,52 +109,51 @@
         });
 
         function renderTable() {
-    const body = document.getElementById('carBody');
-    const search = document.getElementById('fSearch').value.toLowerCase();
-    
-    const filtered = listaAuto.filter(a => {
-        // Uniamo tutti i valori dell'auto in una stringa unica per cercare ovunque
-        const stringaTotale = Object.values(a).join(" ").toLowerCase();
-        return stringaTotale.includes(search);
-    });
+            const body = document.getElementById('carBody');
+            const search = document.getElementById('fSearch').value.toLowerCase();
+            
+            const filtered = listaAuto.filter(a => {
+                const stringaTotale = Object.values(a).join(" ").toLowerCase();
+                return stringaTotale.includes(search);
+            });
 
-    body.innerHTML = filtered.map(a => {
-        const oggi = new Date();
-        const entrata = a.dataEntrata ? parseItalianDate(a.dataEntrata) : oggi;
-        const diffTime = oggi - entrata;
-        const gg = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+            body.innerHTML = filtered.map(a => {
+                const oggi = new Date();
+                const entrata = a.dataEntrata ? parseItalianDate(a.dataEntrata) : oggi;
+                const diffTime = oggi - entrata;
+                const gg = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
 
-        return `
-        <tr>
-            <td><span class="g-badge" style="background:${gg > 45 ? '#e74c3c' : 'rgba(46, 204, 113, 0.1)'}; color:${gg > 45 ? '#fff' : '#2ecc71'};">${gg} GG</span></td>
-            <td style="font-size:0.7rem;">${a.dataEntrata || '-'}</td>
-            <td><strong>${(a.marca || '').toUpperCase()}</strong> ${a.modello || ''}</td>
-            <td><span class="targa-box">${a.targa || ''}</span></td>
-            <td>${Number(a.km || 0).toLocaleString()}</td>
-            <td>${a.anno || '-'}</td>
-            <td>${a.kw || '-'}</td>
-            <td><span class="status-badge" style="background:${a.rev === 'SI' ? '#27ae60' : '#c0392b'}; color:white">${a.rev || 'NO'}</span></td>
-            <td><span class="status-badge" style="background:${a.chiavi === 'SI' ? '#2980b9' : '#7f8c8d'}; color:white">${a.chiavi || 'NO'}</span></td>
-            <td><span class="color-dot" style="background:${getCssColor(a.colore)}"></span>${a.colore || '-'}</td>
-            <td>€ ${Number(a.acquisto || 0).toLocaleString()}</td>
-            <td style="color:#d4af37; font-weight:bold;">€ ${Number(a.prezzo || 0).toLocaleString()}</td>
-            <td>
-                <button onclick="editAuto('${a.id}')" style="background:#444; color:white; border:none; padding:5px 10px; cursor:pointer; border-radius:4px;">MODIFICA</button>
-                <button onclick="deleteAuto('${a.id}')" style="background:#c0392b; color:white; border:none; padding:5px 10px; cursor:pointer; border-radius:4px;">X</button>
-            </td>
-        </tr>`;
-    }).join('');
-}
+                return `
+                <tr>
+                    <td><span class="g-badge" style="background:${gg > 45 ? '#e74c3c' : 'rgba(46, 204, 113, 0.1)'}; color:${gg > 45 ? '#fff' : '#2ecc71'};">${gg} GG</span></td>
+                    <td style="font-size:0.7rem;">${a.dataEntrata || '-'}</td>
+                    <td><strong>${(a.marca || '').toUpperCase()}</strong> ${a.modello || ''}</td>
+                    <td><span class="targa-box">${a.targa || ''}</span></td>
+                    <td>${Number(a.km || 0).toLocaleString()}</td>
+                    <td>${a.anno || '-'}</td>
+                    <td style="font-size:0.8rem; font-weight:600;">${(a.fornitore || '-').toUpperCase()}</td>
+                    <td>${a.kw || '-'}</td>
+                    <td><span class="status-badge" style="background:${a.rev === 'SI' ? '#27ae60' : '#c0392b'}; color:white">${a.rev || 'NO'}</span></td>
+                    <td><span class="status-badge" style="background:${a.chiavi === 'SI' ? '#2980b9' : '#7f8c8d'}; color:white">${a.chiavi || 'NO'}</span></td>
+                    <td><span class="color-dot" style="background:${getCssColor(a.colore)}"></span>${a.colore || '-'}</td>
+                    <td>€ ${Number(a.acquisto || 0).toLocaleString()}</td>
+                    <td style="color:#d4af37; font-weight:bold;">€ ${Number(a.prezzo || 0).toLocaleString()}</td>
+                    <td>
+                        <button onclick="editAuto('${a.id}')" style="background:#444; color:white; border:none; padding:5px 10px; cursor:pointer; border-radius:4px;">MODIFICA</button>
+                        <button onclick="deleteAuto('${a.id}')" style="background:#c0392b; color:white; border:none; padding:5px 10px; cursor:pointer; border-radius:4px;">X</button>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
 
         function addAuto() {
             const marca = prompt("Marca:");
             const modello = prompt("Modello:");
             const targa = prompt("Targa:").toUpperCase();
+            const fornitore = prompt("Fornitore (Acquistato da):");
             
-            // Imposta default oggi in formato italiano
             const oggi = new Date();
             const defaultData = oggi.getDate().toString().padStart(2, '0') + '/' + (oggi.getMonth() + 1).toString().padStart(2, '0') + '/' + oggi.getFullYear();
-            
             const dataE = prompt("Data Entrata (GG/MM/AAAA):", defaultData);
             
             const km = prompt("Chilometri:");
@@ -169,7 +167,7 @@
 
             if (marca && targa) {
                 database.ref('veicoli').push({
-                    marca, modello, targa, dataEntrata: dataE, km, anno, kw, rev, chiavi, colore: col, acquisto: acq, prezzo: prezzo
+                    marca, modello, targa, fornitore, dataEntrata: dataE, km, anno, kw, rev, chiavi, colore: col, acquisto: acq, prezzo: prezzo
                 });
             }
         }
@@ -181,6 +179,7 @@
             const marca = prompt("Modifica Marca:", a.marca) || a.marca;
             const modello = prompt("Modello:", a.modello) || a.modello;
             const targa = (prompt("Targa:", a.targa) || a.targa).toUpperCase();
+            const fornitore = prompt("Fornitore:", a.fornitore || "") || a.fornitore;
             const dataEntrata = prompt("Data Entrata (GG/MM/AAAA):", a.dataEntrata) || a.dataEntrata;
             const km = prompt("KM:", a.km) || a.km;
             const anno = prompt("Anno:", a.anno) || a.anno;
@@ -192,7 +191,7 @@
             const prezzo = prompt("Prezzo Promo:", a.prezzo) || a.prezzo;
 
             database.ref('veicoli/' + id).update({
-                marca, modello, targa, dataEntrata, km, anno, kw, rev, chiavi, colore, acquisto, prezzo
+                marca, modello, targa, fornitore, dataEntrata, km, anno, kw, rev, chiavi, colore, acquisto, prezzo
             });
         }
 
