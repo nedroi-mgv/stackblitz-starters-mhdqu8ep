@@ -331,7 +331,7 @@
             const fees = parseFloat(document.getElementById('s_fees').value) || 0;
             
             const tipoAuto = document.getElementById('s_tipo').value;
-            const detrazioneMargine = (tipoAuto === "recenti") ? 200 : 139;
+            const detrazioneMargine = (tipoAuto === "recenti") ? 240 : 180;
 
             if(cap > 0 && months > 0) {
                 const rCli = cap * (tCli * Math.pow(1 + tCli, months)) / (Math.pow(1 + tCli, months) - 1);
